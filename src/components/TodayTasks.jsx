@@ -22,8 +22,20 @@ const TodayTasks = () => {
     timeSlots.push(`${String(hour).padStart(2, '0')}:00`);
   }
 
-  // LocalStorageからタスクを読み込み + 終了間近タスクを追加
+  // LocalStorageからタスクを読み込み + 終了間近タスクを追加 + 日付チェック
   useEffect(() => {
+    const today = new Date().toDateString();
+    const lastAccessDate = localStorage.getItem('skecheck_last_access_date');
+
+    // 日付が変わっていたらタスクをクリア
+    if (lastAccessDate && lastAccessDate !== today) {
+      localStorage.removeItem('skecheck_quick_tasks');
+      localStorage.removeItem('skecheck_today_tasks');
+    }
+
+    // 今日の日付を保存
+    localStorage.setItem('skecheck_last_access_date', today);
+
     const savedTasks = localStorage.getItem('skecheck_today_tasks');
     if (savedTasks) {
       setTodayTasks(JSON.parse(savedTasks));
@@ -36,11 +48,11 @@ const TodayTasks = () => {
     }
 
     // 本日が終了1週間前のタスクを取得
-    const today = new Date();
+    const todayDate = new Date();
     const upcomingDeadlineTasks = tasks.filter(task => {
       const oneWeekBeforeDeadline = new Date(task.deadline);
       oneWeekBeforeDeadline.setDate(oneWeekBeforeDeadline.getDate() - 7);
-      return isSameDay(oneWeekBeforeDeadline, today) && task.status !== 'completed';
+      return isSameDay(oneWeekBeforeDeadline, todayDate) && task.status !== 'completed';
     });
 
     // 終了間近タスクを追加（既存のタスクと重複しないように）
@@ -179,8 +191,14 @@ const TodayTasks = () => {
 
   return (
     <div className="space-y-6">
-      {/* 簡易タスクリスト */}
+      {/* タスクリスト */}
       <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">本日のタスク</h2>
+            <p className="text-sm text-gray-500">{format(new Date(), 'yyyy年M月d日 (E)', { locale: ja })}</p>
+          </div>
+        </div>
         <h3 className="text-lg font-bold text-gray-800 mb-4">タスクリスト</h3>
 
         {/* タスク追加フォーム */}
@@ -280,244 +298,6 @@ const TodayTasks = () => {
             </div>
           </div>
         )}
-      </div>
-
-      {/* ヘッダー */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-1">本日のタスク</h2>
-            <p className="text-sm text-gray-500">{format(new Date(), 'yyyy年M月d日 (E)', { locale: ja })}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-3xl font-bold text-primary-600">{completionRate}%</p>
-            <p className="text-xs text-gray-500">達成率</p>
-          </div>
-        </div>
-
-        {/* 統計情報 */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="p-4 bg-blue-50 rounded-lg text-center">
-            <p className="text-2xl font-bold text-blue-600">{totalTasks}</p>
-            <p className="text-xs text-blue-600">総タスク</p>
-          </div>
-          <div className="p-4 bg-green-50 rounded-lg text-center">
-            <p className="text-2xl font-bold text-green-600">{completedTasks}</p>
-            <p className="text-xs text-green-600">完了</p>
-          </div>
-          <div className="p-4 bg-orange-50 rounded-lg text-center">
-            <p className="text-2xl font-bold text-orange-600">{remainingTasks}</p>
-            <p className="text-xs text-orange-600">残り</p>
-          </div>
-        </div>
-
-        {/* タスク追加フォーム */}
-        {selectedTimeSlot && (
-          <div className="p-4 bg-primary-50 border-2 border-primary-300 rounded-lg">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-primary-800">
-                {selectedTimeSlot} のタスクを追加
-              </h3>
-              <button
-                onClick={() => {
-                  setSelectedTimeSlot(null);
-                  setNewTaskTitle('');
-                }}
-                className="p-1 text-primary-600 hover:text-primary-800"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* タスクリストから選択 */}
-            {quickTasks.filter(t => !t.completed).length > 0 && (
-              <div className="mb-3">
-                <p className="text-xs text-primary-700 mb-2">タスクリストから選択:</p>
-                <div className="flex flex-wrap gap-2">
-                  {quickTasks.filter(t => !t.completed).map((task) => (
-                    <button
-                      key={task.id}
-                      onClick={() => setNewTaskTitle(task.text)}
-                      className="px-3 py-1.5 bg-white border border-primary-300 rounded-lg text-sm text-gray-700 hover:bg-primary-100 hover:border-primary-400 transition-colors"
-                    >
-                      {task.text}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="mb-3">
-              <input
-                type="text"
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                placeholder="タスクの内容を入力..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleAddTask();
-                  }
-                }}
-                autoFocus
-              />
-            </div>
-
-            <div className="flex gap-3 mb-3">
-              <div className="flex-1">
-                <label className="block text-xs text-primary-700 mb-1">開始時間</label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  placeholder={selectedTimeSlot}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs text-primary-700 mb-1">終了時間（任意）</label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  placeholder="終了時間"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={handleAddTask}
-              disabled={!newTaskTitle.trim()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-4 h-4" />
-              <span>追加</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* タイムシート */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="p-6">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">タイムシート (7:00 - 24:00)</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            時間をクリックしてタスクを追加できます
-          </p>
-        </div>
-
-        {/* タイムライン */}
-        <div className="divide-y divide-gray-200">
-          {timeSlots.map((time) => {
-            const tasks = getTasksForTimeSlot(time);
-            const isCurrentTime = time === currentTime;
-            const isPastTime = time < currentTime;
-
-            return (
-              <div
-                key={time}
-                className={`flex transition-colors ${
-                  isCurrentTime
-                    ? 'bg-yellow-50 border-l-4 border-yellow-400'
-                    : isPastTime
-                    ? 'bg-gray-50'
-                    : ''
-                }`}
-              >
-                {/* 時間表示 */}
-                <div className="w-24 flex-shrink-0 p-4 border-r border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <Clock className={`w-4 h-4 ${isCurrentTime ? 'text-yellow-600' : 'text-gray-400'}`} />
-                    <span className={`text-sm font-semibold ${
-                      isCurrentTime ? 'text-yellow-700' : isPastTime ? 'text-gray-400' : 'text-gray-700'
-                    }`}>
-                      {time}
-                    </span>
-                  </div>
-                  {isCurrentTime && (
-                    <span className="text-xs text-yellow-600 font-semibold">現在</span>
-                  )}
-                </div>
-
-                {/* タスクエリア */}
-                <div className="flex-1 p-4">
-                  {tasks.length > 0 ? (
-                    <div className="space-y-2">
-                      {tasks.map((task) => {
-                        const isTaskStart = task.time === time;
-
-                        return (
-                          <div
-                            key={task.id}
-                            className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                              task.endTime
-                                ? task.completed
-                                  ? 'bg-gray-100 border-l-4 border-gray-400 opacity-60'
-                                  : 'bg-primary-100 border-l-4 border-primary-500'
-                                : task.completed
-                                ? 'bg-gray-50 border-2 border-gray-200 opacity-60'
-                                : 'bg-white border-2 border-gray-300 hover:border-primary-400'
-                            }`}
-                          >
-                            {isTaskStart && (
-                              <button
-                                onClick={() => handleToggleComplete(task.id)}
-                                className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                  task.completed
-                                    ? 'bg-green-500 border-green-500'
-                                    : 'border-gray-300 hover:border-primary-500'
-                                }`}
-                              >
-                                {task.completed && <Check className="w-3 h-3 text-white" />}
-                              </button>
-                            )}
-
-                            <div className="flex-1">
-                              <p className={`text-sm font-medium ${task.completed ? 'line-through text-gray-500' : task.endTime ? 'text-primary-800' : 'text-gray-800'}`}>
-                                {task.title}
-                              </p>
-                              {task.endTime && isTaskStart && (
-                                <p className="text-xs text-primary-600 mt-1">
-                                  {task.startTime} 〜 {task.endTime}
-                                </p>
-                              )}
-                              {task.endTime && !isTaskStart && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                  ⬆ {task.startTime}から継続中
-                                </p>
-                              )}
-                            </div>
-
-                            {isTaskStart && (
-                              <button
-                                onClick={() => handleDeleteTask(task.id)}
-                                className="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setSelectedTimeSlot(time);
-                        setStartTime(time);
-                        setEndTime('');
-                      }}
-                      className="w-full py-2 text-sm text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors text-left px-3"
-                    >
-                      + タスクを追加
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </div>
     </div>
   );

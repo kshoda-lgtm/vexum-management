@@ -12,7 +12,7 @@ import Memo from './components/Memo';
 import Header from './components/Header';
 
 function App() {
-  const [currentView, setCurrentView] = useState('staff');
+  const [currentView, setCurrentView] = useState('today-tasks');
 
   return (
     <AppProvider>

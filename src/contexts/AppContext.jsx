@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { ref, onValue, set, get } from 'firebase/database';
-import { database } from '../firebase';
+import { supabase } from '../supabase';
 
 const AppContext = createContext();
 
@@ -24,33 +23,64 @@ export const AppProvider = ({ children }) => {
 
   // 初期データ読み込み + リアルタイム同期
   useEffect(() => {
-    const dataRef = ref(database, 'appData');
+    loadData();
+    setupRealtimeSubscription();
+  }, []);
 
-    const unsubscribe = onValue(dataRef, (snapshot) => {
-      try {
-        const data = snapshot.val() || {};
+  // データ読み込み
+  const loadData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('app_data')
+        .select('*')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (data) {
         setStaff(data.staff || []);
         setTasks(data.tasks || []);
         setMeetings(data.meetings || []);
         setReports(data.reports || []);
         setShifts(data.shifts || []);
-        setLoading(false);
-        setError(null);
-      } catch (err) {
-        handleFirebaseError(err);
       }
-    }, (err) => {
-      handleFirebaseError(err);
-    });
+      setLoading(false);
+      setError(null);
+    } catch (err) {
+      handleSupabaseError(err);
+    }
+  };
 
-    return () => unsubscribe();
-  }, []);
+  // リアルタイム同期
+  const setupRealtimeSubscription = () => {
+    const channel = supabase
+      .channel('app_data_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'app_data' },
+        (payload) => {
+          if (payload.new) {
+            setStaff(payload.new.staff || []);
+            setTasks(payload.new.tasks || []);
+            setMeetings(payload.new.meetings || []);
+            setReports(payload.new.reports || []);
+            setShifts(payload.new.shifts || []);
+          }
+        }
+      )
+      .subscribe();
 
-  // Firebaseエラーハンドリング
-  const handleFirebaseError = (err) => {
-    console.error('Firebase Error:', err);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
 
-    if (err.code === 'PERMISSION_DENIED' || err.message?.includes('quota')) {
+  // Supabaseエラーハンドリング
+  const handleSupabaseError = (err) => {
+    console.error('Supabase Error:', err);
+
+    if (err.message?.includes('quota') || err.message?.includes('limit')) {
       setQuotaExceeded(true);
       setError('無料枠の上限に達しました。データの同期が一時停止されています。');
     } else {
@@ -59,19 +89,27 @@ export const AppProvider = ({ children }) => {
     setLoading(false);
   };
 
-  // Firebaseに保存
-  const saveToFirebase = async (key, value) => {
+  // Supabaseに保存
+  const saveToSupabase = async (key, value) => {
     if (quotaExceeded) {
       alert('無料枠の上限に達したため、データを保存できません。');
       return;
     }
 
     try {
-      const dataRef = ref(database, `appData/${key}`);
-      await set(dataRef, value);
+      const updateData = {
+        [key]: value,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('app_data')
+        .upsert({ id: 1, ...updateData });
+
+      if (error) throw error;
       setError(null);
     } catch (err) {
-      handleFirebaseError(err);
+      handleSupabaseError(err);
       throw err;
     }
   };
@@ -85,7 +123,7 @@ export const AppProvider = ({ children }) => {
       updatedAt: new Date().toISOString()
     };
     const updatedStaff = [...staff, staffWithMeta];
-    await saveToFirebase('staff', updatedStaff);
+    await saveToSupabase('staff', updatedStaff);
     return staffWithMeta;
   };
 
@@ -93,12 +131,12 @@ export const AppProvider = ({ children }) => {
     const updatedStaff = staff.map(s =>
       s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
     );
-    await saveToFirebase('staff', updatedStaff);
+    await saveToSupabase('staff', updatedStaff);
   };
 
   const deleteStaff = async (id) => {
     const updatedStaff = staff.filter(s => s.id !== id);
-    await saveToFirebase('staff', updatedStaff);
+    await saveToSupabase('staff', updatedStaff);
   };
 
   // タスク管理
@@ -110,7 +148,7 @@ export const AppProvider = ({ children }) => {
       updatedAt: new Date().toISOString()
     };
     const updatedTasks = [...tasks, taskWithMeta];
-    await saveToFirebase('tasks', updatedTasks);
+    await saveToSupabase('tasks', updatedTasks);
     return taskWithMeta;
   };
 
@@ -118,12 +156,12 @@ export const AppProvider = ({ children }) => {
     const updatedTasks = tasks.map(t =>
       t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
     );
-    await saveToFirebase('tasks', updatedTasks);
+    await saveToSupabase('tasks', updatedTasks);
   };
 
   const deleteTask = async (id) => {
     const updatedTasks = tasks.filter(t => t.id !== id);
-    await saveToFirebase('tasks', updatedTasks);
+    await saveToSupabase('tasks', updatedTasks);
   };
 
   // ミーティング管理
@@ -135,7 +173,7 @@ export const AppProvider = ({ children }) => {
       updatedAt: new Date().toISOString()
     };
     const updatedMeetings = [...meetings, meetingWithMeta];
-    await saveToFirebase('meetings', updatedMeetings);
+    await saveToSupabase('meetings', updatedMeetings);
     return meetingWithMeta;
   };
 
@@ -143,12 +181,12 @@ export const AppProvider = ({ children }) => {
     const updatedMeetings = meetings.map(m =>
       m.id === id ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m
     );
-    await saveToFirebase('meetings', updatedMeetings);
+    await saveToSupabase('meetings', updatedMeetings);
   };
 
   const deleteMeeting = async (id) => {
     const updatedMeetings = meetings.filter(m => m.id !== id);
-    await saveToFirebase('meetings', updatedMeetings);
+    await saveToSupabase('meetings', updatedMeetings);
   };
 
   // 月次レポート管理
@@ -161,7 +199,7 @@ export const AppProvider = ({ children }) => {
       updatedAt: new Date().toISOString()
     };
     const updatedReports = [...reports, reportWithMeta];
-    await saveToFirebase('reports', updatedReports);
+    await saveToSupabase('reports', updatedReports);
     return reportWithMeta;
   };
 
@@ -169,12 +207,12 @@ export const AppProvider = ({ children }) => {
     const updatedReports = reports.map(r =>
       r.id === id ? { ...r, ...updates, updatedAt: new Date().toISOString() } : r
     );
-    await saveToFirebase('reports', updatedReports);
+    await saveToSupabase('reports', updatedReports);
   };
 
   const deleteReport = async (id) => {
     const updatedReports = reports.filter(r => r.id !== id);
-    await saveToFirebase('reports', updatedReports);
+    await saveToSupabase('reports', updatedReports);
   };
 
   // シフト管理
@@ -186,7 +224,7 @@ export const AppProvider = ({ children }) => {
       updatedAt: new Date().toISOString()
     };
     const updatedShifts = [...shifts, shiftWithMeta];
-    await saveToFirebase('shifts', updatedShifts);
+    await saveToSupabase('shifts', updatedShifts);
     return shiftWithMeta;
   };
 
@@ -194,12 +232,12 @@ export const AppProvider = ({ children }) => {
     const updatedShifts = shifts.map(s =>
       s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
     );
-    await saveToFirebase('shifts', updatedShifts);
+    await saveToSupabase('shifts', updatedShifts);
   };
 
   const deleteShift = async (id) => {
     const updatedShifts = shifts.filter(s => s.id !== id);
-    await saveToFirebase('shifts', updatedShifts);
+    await saveToSupabase('shifts', updatedShifts);
   };
 
   const value = {

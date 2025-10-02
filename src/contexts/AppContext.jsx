@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { getAllData, saveToStorage, STORAGE_KEYS } from '../utils/storage';
+import { ref, onValue, set, get } from 'firebase/database';
+import { database } from '../firebase';
 
 const AppContext = createContext();
 
@@ -18,159 +19,187 @@ export const AppProvider = ({ children }) => {
   const [reports, setReports] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
 
-  // 初期データ読み込み
+  // 初期データ読み込み + リアルタイム同期
   useEffect(() => {
-    const data = getAllData();
-    setStaff(data.staff || []);
-    setTasks(data.tasks || []);
-    setMeetings(data.meetings || []);
-    setReports(data.reports || []);
-    setShifts(data.shifts || []);
-    setLoading(false);
+    const dataRef = ref(database, 'appData');
+
+    const unsubscribe = onValue(dataRef, (snapshot) => {
+      try {
+        const data = snapshot.val() || {};
+        setStaff(data.staff || []);
+        setTasks(data.tasks || []);
+        setMeetings(data.meetings || []);
+        setReports(data.reports || []);
+        setShifts(data.shifts || []);
+        setLoading(false);
+        setError(null);
+      } catch (err) {
+        handleFirebaseError(err);
+      }
+    }, (err) => {
+      handleFirebaseError(err);
+    });
+
+    return () => unsubscribe();
   }, []);
 
+  // Firebaseエラーハンドリング
+  const handleFirebaseError = (err) => {
+    console.error('Firebase Error:', err);
+
+    if (err.code === 'PERMISSION_DENIED' || err.message?.includes('quota')) {
+      setQuotaExceeded(true);
+      setError('無料枠の上限に達しました。データの同期が一時停止されています。');
+    } else {
+      setError('データの同期でエラーが発生しました。');
+    }
+    setLoading(false);
+  };
+
+  // Firebaseに保存
+  const saveToFirebase = async (key, value) => {
+    if (quotaExceeded) {
+      alert('無料枠の上限に達したため、データを保存できません。');
+      return;
+    }
+
+    try {
+      const dataRef = ref(database, `appData/${key}`);
+      await set(dataRef, value);
+      setError(null);
+    } catch (err) {
+      handleFirebaseError(err);
+      throw err;
+    }
+  };
+
   // スタッフ管理
-  const addStaff = (newStaff) => {
+  const addStaff = async (newStaff) => {
     const staffWithMeta = {
       ...newStaff,
       id: generateId(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     const updatedStaff = [...staff, staffWithMeta];
-    setStaff(updatedStaff);
-    saveToStorage(STORAGE_KEYS.STAFF, updatedStaff);
+    await saveToFirebase('staff', updatedStaff);
     return staffWithMeta;
   };
 
-  const updateStaff = (id, updates) => {
+  const updateStaff = async (id, updates) => {
     const updatedStaff = staff.map(s =>
-      s.id === id ? { ...s, ...updates, updatedAt: new Date() } : s
+      s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
     );
-    setStaff(updatedStaff);
-    saveToStorage(STORAGE_KEYS.STAFF, updatedStaff);
+    await saveToFirebase('staff', updatedStaff);
   };
 
-  const deleteStaff = (id) => {
+  const deleteStaff = async (id) => {
     const updatedStaff = staff.filter(s => s.id !== id);
-    setStaff(updatedStaff);
-    saveToStorage(STORAGE_KEYS.STAFF, updatedStaff);
+    await saveToFirebase('staff', updatedStaff);
   };
 
   // タスク管理
-  const addTask = (newTask) => {
+  const addTask = async (newTask) => {
     const taskWithMeta = {
       ...newTask,
       id: generateId(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     const updatedTasks = [...tasks, taskWithMeta];
-    setTasks(updatedTasks);
-    saveToStorage(STORAGE_KEYS.TASKS, updatedTasks);
+    await saveToFirebase('tasks', updatedTasks);
     return taskWithMeta;
   };
 
-  const updateTask = (id, updates) => {
+  const updateTask = async (id, updates) => {
     const updatedTasks = tasks.map(t =>
-      t.id === id ? { ...t, ...updates, updatedAt: new Date() } : t
+      t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
     );
-    setTasks(updatedTasks);
-    saveToStorage(STORAGE_KEYS.TASKS, updatedTasks);
+    await saveToFirebase('tasks', updatedTasks);
   };
 
-  const deleteTask = (id) => {
+  const deleteTask = async (id) => {
     const updatedTasks = tasks.filter(t => t.id !== id);
-    setTasks(updatedTasks);
-    saveToStorage(STORAGE_KEYS.TASKS, updatedTasks);
+    await saveToFirebase('tasks', updatedTasks);
   };
 
   // ミーティング管理
-  const addMeeting = (newMeeting) => {
+  const addMeeting = async (newMeeting) => {
     const meetingWithMeta = {
       ...newMeeting,
       id: generateId(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     const updatedMeetings = [...meetings, meetingWithMeta];
-    setMeetings(updatedMeetings);
-    saveToStorage(STORAGE_KEYS.MEETINGS, updatedMeetings);
+    await saveToFirebase('meetings', updatedMeetings);
     return meetingWithMeta;
   };
 
-  const updateMeeting = (id, updates) => {
+  const updateMeeting = async (id, updates) => {
     const updatedMeetings = meetings.map(m =>
-      m.id === id ? { ...m, ...updates, updatedAt: new Date() } : m
+      m.id === id ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m
     );
-    setMeetings(updatedMeetings);
-    saveToStorage(STORAGE_KEYS.MEETINGS, updatedMeetings);
+    await saveToFirebase('meetings', updatedMeetings);
   };
 
-  const deleteMeeting = (id) => {
+  const deleteMeeting = async (id) => {
     const updatedMeetings = meetings.filter(m => m.id !== id);
-    setMeetings(updatedMeetings);
-    saveToStorage(STORAGE_KEYS.MEETINGS, updatedMeetings);
+    await saveToFirebase('meetings', updatedMeetings);
   };
 
   // 月次レポート管理
-  const addReport = (newReport) => {
+  const addReport = async (newReport) => {
     const reportWithMeta = {
       ...newReport,
       id: generateId(),
-      generatedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      generatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     const updatedReports = [...reports, reportWithMeta];
-    setReports(updatedReports);
-    saveToStorage(STORAGE_KEYS.REPORTS, updatedReports);
+    await saveToFirebase('reports', updatedReports);
     return reportWithMeta;
   };
 
-  const updateReport = (id, updates) => {
+  const updateReport = async (id, updates) => {
     const updatedReports = reports.map(r =>
-      r.id === id ? { ...r, ...updates, updatedAt: new Date() } : r
+      r.id === id ? { ...r, ...updates, updatedAt: new Date().toISOString() } : r
     );
-    setReports(updatedReports);
-    saveToStorage(STORAGE_KEYS.REPORTS, updatedReports);
+    await saveToFirebase('reports', updatedReports);
   };
 
-  const deleteReport = (id) => {
+  const deleteReport = async (id) => {
     const updatedReports = reports.filter(r => r.id !== id);
-    setReports(updatedReports);
-    saveToStorage(STORAGE_KEYS.REPORTS, updatedReports);
+    await saveToFirebase('reports', updatedReports);
   };
 
   // シフト管理
-  const addShift = (newShift) => {
+  const addShift = async (newShift) => {
     const shiftWithMeta = {
       ...newShift,
       id: generateId(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
-    setShifts(prevShifts => {
-      const updatedShifts = [...prevShifts, shiftWithMeta];
-      saveToStorage(STORAGE_KEYS.SHIFTS, updatedShifts);
-      return updatedShifts;
-    });
+    const updatedShifts = [...shifts, shiftWithMeta];
+    await saveToFirebase('shifts', updatedShifts);
     return shiftWithMeta;
   };
 
-  const updateShift = (id, updates) => {
+  const updateShift = async (id, updates) => {
     const updatedShifts = shifts.map(s =>
-      s.id === id ? { ...s, ...updates, updatedAt: new Date() } : s
+      s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
     );
-    setShifts(updatedShifts);
-    saveToStorage(STORAGE_KEYS.SHIFTS, updatedShifts);
+    await saveToFirebase('shifts', updatedShifts);
   };
 
-  const deleteShift = (id) => {
+  const deleteShift = async (id) => {
     const updatedShifts = shifts.filter(s => s.id !== id);
-    setShifts(updatedShifts);
-    saveToStorage(STORAGE_KEYS.SHIFTS, updatedShifts);
+    await saveToFirebase('shifts', updatedShifts);
   };
 
   const value = {
@@ -181,6 +210,8 @@ export const AppProvider = ({ children }) => {
     reports,
     shifts,
     loading,
+    error,
+    quotaExceeded,
 
     // Staff actions
     addStaff,

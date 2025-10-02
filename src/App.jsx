@@ -10,6 +10,7 @@ import TaskTimeline from './components/TaskTimeline';
 import TodayTasks from './components/TodayTasks';
 import Memo from './components/Memo';
 import Header from './components/Header';
+import ErrorNotification from './components/ErrorNotification';
 
 function App() {
   const [currentView, setCurrentView] = useState('today-tasks');
@@ -17,6 +18,7 @@ function App() {
   return (
     <AppProvider>
       <div className="min-h-screen bg-gray-50">
+        <ErrorNotification />
         <Header currentView={currentView} setCurrentView={setCurrentView} />
         <main className="container mx-auto px-4 py-6">
           {currentView === 'staff' && <StaffList />}

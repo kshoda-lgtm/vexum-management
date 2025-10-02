@@ -12,6 +12,7 @@
   "dependencies": {
     "date-fns": "^4.1.0",
     "file-saver": "^2.0.5",
+    "firebase": "^12.3.0",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.544.0",
     "react": "^19.1.1",

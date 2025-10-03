@@ -1,0 +1,35 @@
+GASバックエンド - Web App URL
+================================
+
+Web App URL (本番):
+https://script.google.com/macros/s/AKfycbypY-jY7lcvOqnRCvUDRlRp9zYYMW28POP2RcfDZIqop7HtLSe6KcpaGwiYGYL70td1/exec
+
+デプロイID: AKfycbypY-jY7lcvOqnRCvUDRlRp9zYYMW28POP2RcfDZIqop7HtLSe6KcpaGwiYGYL70td1
+バージョン: v2 - 進捗管理システムAPI (アクセス: 全員)
+
+GASエディタ:
+https://script.google.com/d/1L5eoAIjkrqIHK0lvr2BqbC_JGYvm6a0hTHGH4jgqcXR_OmDa6_p7Gocb/edit
+
+================================
+
+APIテスト例:
+
+# 全スタッフを取得
+https://script.google.com/macros/s/AKfycbypY-jY7lcvOqnRCvUDRlRp9zYYMW28POP2RcfDZIqop7HtLSe6KcpaGwiYGYL70td1/exec?action=getAllStaff
+
+# シートを初期化 (✅ 完了)
+https://script.google.com/macros/s/AKfycbypY-jY7lcvOqnRCvUDRlRp9zYYMW28POP2RcfDZIqop7HtLSe6KcpaGwiYGYL70td1/exec?action=initializeAllSheets
+
+================================
+
+JavaScriptでの使用例:
+
+import ProgressManagementAPI from './api-client.js';
+
+const api = new ProgressManagementAPI(
+  'https://script.google.com/macros/s/AKfycbypY-jY7lcvOqnRCvUDRlRp9zYYMW28POP2RcfDZIqop7HtLSe6KcpaGwiYGYL70td1/exec'
+);
+
+// スタッフを取得
+const staff = await api.getAllStaff();
+console.log(staff);

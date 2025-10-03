@@ -97,14 +97,27 @@ export const AppProvider = ({ children }) => {
     }
 
     try {
+      // 現在の全データを取得
+      const { data: currentData } = await supabase
+        .from('app_data')
+        .select('*')
+        .eq('id', 1)
+        .single();
+
+      // 更新するデータを準備
       const updateData = {
-        [key]: value,
+        id: 1,
+        staff: key === 'staff' ? value : (currentData?.staff || []),
+        tasks: key === 'tasks' ? value : (currentData?.tasks || []),
+        meetings: key === 'meetings' ? value : (currentData?.meetings || []),
+        reports: key === 'reports' ? value : (currentData?.reports || []),
+        shifts: key === 'shifts' ? value : (currentData?.shifts || []),
         updated_at: new Date().toISOString()
       };
 
       const { error } = await supabase
         .from('app_data')
-        .upsert({ id: 1, ...updateData });
+        .upsert(updateData);
 
       if (error) throw error;
       setError(null);

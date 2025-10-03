@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Supabase接続テスト</title>
+</head>
+<body>
+  <h1>Supabase接続テスト</h1>
+  <button onclick="testConnection()">接続テスト</button>
+  <button onclick="testSave()">保存テスト</button>
+  <button onclick="testLoad()">読み込みテスト</button>
+  <pre id="result"></pre>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    const supabase = createClient(
+      'https://uzmndwlqsrsghvwzgkqm.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV6bW5kd2xxc3JzZ2h2d3pna3FtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MDY0MTcsImV4cCI6MjA3NDk4MjQxN30.JnOQMHXQdfOFrH5xwPArATmKgGOHfNq1opXFFfGm9Xw'
+    );
+
+    window.testConnection = async () => {
+      const result = document.getElementById('result');
+      result.textContent = 'テスト中...';
+
+      try {
+        const { data, error } = await supabase.from('app_data').select('*');
+        if (error) throw error;
+        result.textContent = '✅ 接続成功！\n' + JSON.stringify(data, null, 2);
+      } catch (err) {
+        result.textContent = '❌ エラー：\n' + err.message;
+      }
+    };
+
+    window.testSave = async () => {
+      const result = document.getElementById('result');
+      result.textContent = '保存中...';
+
+      try {
+        const { error } = await supabase
+          .from('app_data')
+          .upsert({
+            id: 1,
+            staff: [],
+            tasks: [{id: 'test1', text: 'テストタスク', completed: false}],
+            meetings: [],
+            reports: [],
+            shifts: [],
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) throw error;
+        result.textContent = '✅ 保存成功！';
+      } catch (err) {
+        result.textContent = '❌ エラー：\n' + err.message;
+      }
+    };
+
+    window.testLoad = async () => {
+      const result = document.getElementById('result');
+      result.textContent = '読み込み中...';
+
+      try {
+        const { data, error } = await supabase
+          .from('app_data')
+          .select('*')
+          .eq('id', 1)
+          .single();
+
+        if (error) throw error;
+        result.textContent = '✅ 読み込み成功！\n' + JSON.stringify(data, null, 2);
+      } catch (err) {
+        result.textContent = '❌ エラー：\n' + err.message;
+      }
+    };
+  </script>
+</body>
+</html>

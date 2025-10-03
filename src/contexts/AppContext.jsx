@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabase';
+import { initializeSupabase } from '../utils/initSupabase';
 
 const AppContext = createContext();
 
@@ -32,13 +33,32 @@ export const AppProvider = ({ children }) => {
       const { data, error } = await supabase
         .from('app_data')
         .select('*')
+        .eq('id', 1)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
+      if (error && error.code === 'PGRST116') {
+        // データが存在しない場合は初期化
+        console.log('初期データを作成します...');
+        const initResult = await initializeSupabase();
+        if (initResult.success) {
+          // 再度データを読み込む
+          const { data: newData } = await supabase
+            .from('app_data')
+            .select('*')
+            .eq('id', 1)
+            .single();
 
-      if (data) {
+          if (newData) {
+            setStaff(newData.staff || []);
+            setTasks(newData.tasks || []);
+            setMeetings(newData.meetings || []);
+            setReports(newData.reports || []);
+            setShifts(newData.shifts || []);
+          }
+        }
+      } else if (error) {
+        throw error;
+      } else if (data) {
         setStaff(data.staff || []);
         setTasks(data.tasks || []);
         setMeetings(data.meetings || []);

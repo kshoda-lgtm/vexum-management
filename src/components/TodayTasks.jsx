@@ -3,6 +3,7 @@ import { Clock, Plus, Trash2, Check, X } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useAppContext } from '../contexts/AppContext';
+import { supabase } from '../supabase';
 
 const TodayTasks = () => {
   const { tasks } = useAppContext();
@@ -22,69 +23,137 @@ const TodayTasks = () => {
     timeSlots.push(`${String(hour).padStart(2, '0')}:00`);
   }
 
-  // LocalStorageからタスクを読み込み + 終了間近タスクを追加 + 日付チェック
+  // Supabaseからタスクを読み込み + 終了間近タスクを追加 + 日付チェック
   useEffect(() => {
-    const today = new Date().toDateString();
-    const lastAccessDate = localStorage.getItem('skecheck_last_access_date');
-
-    // 日付が変わっていたらタスクをクリア
-    if (lastAccessDate && lastAccessDate !== today) {
-      localStorage.removeItem('skecheck_quick_tasks');
-      localStorage.removeItem('skecheck_today_tasks');
-    }
-
-    // 今日の日付を保存
-    localStorage.setItem('skecheck_last_access_date', today);
-
-    const savedTasks = localStorage.getItem('skecheck_today_tasks');
-    if (savedTasks) {
-      setTodayTasks(JSON.parse(savedTasks));
-    }
-
-    const savedQuickTasks = localStorage.getItem('skecheck_quick_tasks');
-    let loadedQuickTasks = [];
-    if (savedQuickTasks) {
-      loadedQuickTasks = JSON.parse(savedQuickTasks);
-    }
-
-    // 本日が終了1週間前のタスクを取得
-    const todayDate = new Date();
-    const upcomingDeadlineTasks = tasks.filter(task => {
-      const oneWeekBeforeDeadline = new Date(task.deadline);
-      oneWeekBeforeDeadline.setDate(oneWeekBeforeDeadline.getDate() - 7);
-      return isSameDay(oneWeekBeforeDeadline, todayDate) && task.status !== 'completed';
-    });
-
-    // 終了間近タスクを追加（既存のタスクと重複しないように）
-    const deadlineTaskTexts = upcomingDeadlineTasks.map(t => `${t.taskName} 終了間近`);
-    const existingTexts = loadedQuickTasks.map(t => t.text);
-
-    upcomingDeadlineTasks.forEach(task => {
-      const taskText = `${task.taskName} 終了間近`;
-      if (!existingTexts.includes(taskText)) {
-        loadedQuickTasks.push({
-          id: `deadline-${task.id}`,
-          text: taskText,
-          completed: false,
-          createdAt: new Date().toISOString(),
-          isDeadlineWarning: true
-        });
-      }
-    });
-
-    setQuickTasks(loadedQuickTasks);
+    loadTodayTasks();
+    setupRealtimeSubscription();
   }, [tasks]);
 
-  // タスクをLocalStorageに保存
-  const saveTasks = (updatedTasks) => {
-    localStorage.setItem('skecheck_today_tasks', JSON.stringify(updatedTasks));
-    setTodayTasks(updatedTasks);
+  const loadTodayTasks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('today_tasks')
+        .select('*')
+        .eq('id', 1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+
+      // 日付チェック
+      const today = new Date().toISOString().split('T')[0];
+      const lastResetDate = data?.last_reset_date;
+
+      let loadedQuickTasks = [];
+      let loadedTodayTasks = [];
+
+      if (lastResetDate !== today) {
+        // 日付が変わっていたらリセット
+        await supabase
+          .from('today_tasks')
+          .upsert({
+            id: 1,
+            quick_tasks: [],
+            today_tasks: [],
+            last_reset_date: today,
+            updated_at: new Date().toISOString()
+          });
+      } else {
+        loadedQuickTasks = data?.quick_tasks || [];
+        loadedTodayTasks = data?.today_tasks || [];
+      }
+
+      // 終了間近タスクを追加
+      const todayDate = new Date();
+      const upcomingDeadlineTasks = tasks.filter(task => {
+        const oneWeekBeforeDeadline = new Date(task.deadline);
+        oneWeekBeforeDeadline.setDate(oneWeekBeforeDeadline.getDate() - 7);
+        return isSameDay(oneWeekBeforeDeadline, todayDate) && task.status !== 'completed';
+      });
+
+      const existingTexts = loadedQuickTasks.map(t => t.text);
+      upcomingDeadlineTasks.forEach(task => {
+        const taskText = `${task.taskName} 終了間近`;
+        if (!existingTexts.includes(taskText)) {
+          loadedQuickTasks.push({
+            id: `deadline-${task.id}`,
+            text: taskText,
+            completed: false,
+            createdAt: new Date().toISOString(),
+            isDeadlineWarning: true
+          });
+        }
+      });
+
+      setQuickTasks(loadedQuickTasks);
+      setTodayTasks(loadedTodayTasks);
+    } catch (err) {
+      console.error('Error loading today tasks:', err);
+    }
   };
 
-  // 簡易タスクをLocalStorageに保存
-  const saveQuickTasks = (updatedTasks) => {
-    localStorage.setItem('skecheck_quick_tasks', JSON.stringify(updatedTasks));
-    setQuickTasks(updatedTasks);
+  const setupRealtimeSubscription = () => {
+    const channel = supabase
+      .channel('today_tasks_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'today_tasks' },
+        (payload) => {
+          if (payload.new) {
+            setQuickTasks(payload.new.quick_tasks || []);
+            setTodayTasks(payload.new.today_tasks || []);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  // タスクをSupabaseに保存
+  const saveTasks = async (updatedTasks) => {
+    try {
+      const { data: currentData } = await supabase
+        .from('today_tasks')
+        .select('*')
+        .eq('id', 1)
+        .single();
+
+      await supabase
+        .from('today_tasks')
+        .upsert({
+          id: 1,
+          quick_tasks: currentData?.quick_tasks || [],
+          today_tasks: updatedTasks,
+          last_reset_date: currentData?.last_reset_date || new Date().toISOString().split('T')[0],
+          updated_at: new Date().toISOString()
+        });
+    } catch (err) {
+      console.error('Error saving tasks:', err);
+    }
+  };
+
+  // 簡易タスクをSupabaseに保存
+  const saveQuickTasks = async (updatedTasks) => {
+    try {
+      const { data: currentData } = await supabase
+        .from('today_tasks')
+        .select('*')
+        .eq('id', 1)
+        .single();
+
+      await supabase
+        .from('today_tasks')
+        .upsert({
+          id: 1,
+          quick_tasks: updatedTasks,
+          today_tasks: currentData?.today_tasks || [],
+          last_reset_date: currentData?.last_reset_date || new Date().toISOString().split('T')[0],
+          updated_at: new Date().toISOString()
+        });
+    } catch (err) {
+      console.error('Error saving quick tasks:', err);
+    }
   };
 
   // タスクを追加

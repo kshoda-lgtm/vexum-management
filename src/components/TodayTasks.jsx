@@ -3,63 +3,40 @@ import { Clock, Plus, Trash2, Check, X } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useAppContext } from '../contexts/AppContext';
-import { supabase } from '../supabase';
 
 const TodayTasks = () => {
   const { tasks } = useAppContext();
-  const [todayTasks, setTodayTasks] = useState([]);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState(null);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-
-  // 簡易タスクリスト
   const [quickTasks, setQuickTasks] = useState([]);
   const [newQuickTaskText, setNewQuickTaskText] = useState('');
 
-  // 7:00 から 24:00 までの時間スロットを生成
-  const timeSlots = [];
-  for (let hour = 7; hour <= 24; hour++) {
-    timeSlots.push(`${String(hour).padStart(2, '0')}:00`);
-  }
+  const STORAGE_KEY = 'today_tasks_data';
 
-  // Supabaseからタスクを読み込み + 終了間近タスクを追加 + 日付チェック
+  // LocalStorageからデータを読み込み
   useEffect(() => {
     loadTodayTasks();
-    setupRealtimeSubscription();
   }, [tasks]);
 
-  const loadTodayTasks = async () => {
+  const loadTodayTasks = () => {
     try {
-      const { data, error } = await supabase
-        .from('today_tasks')
-        .select('*')
-        .eq('id', 1)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error;
+      const stored = localStorage.getItem(STORAGE_KEY);
+      const data = stored ? JSON.parse(stored) : null;
 
       // 日付チェック
       const today = new Date().toISOString().split('T')[0];
       const lastResetDate = data?.last_reset_date;
 
       let loadedQuickTasks = [];
-      let loadedTodayTasks = [];
 
       if (lastResetDate !== today) {
         // 日付が変わっていたらリセット
-        await supabase
-          .from('today_tasks')
-          .upsert({
-            id: 1,
-            quick_tasks: [],
-            today_tasks: [],
-            last_reset_date: today,
-            updated_at: new Date().toISOString()
-          });
+        const newData = {
+          quick_tasks: [],
+          last_reset_date: today,
+          updated_at: new Date().toISOString()
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
       } else {
         loadedQuickTasks = data?.quick_tasks || [];
-        loadedTodayTasks = data?.today_tasks || [];
       }
 
       // 終了間近タスクを追加
@@ -85,111 +62,29 @@ const TodayTasks = () => {
       });
 
       setQuickTasks(loadedQuickTasks);
-      setTodayTasks(loadedTodayTasks);
     } catch (err) {
       console.error('Error loading today tasks:', err);
     }
   };
 
-  const setupRealtimeSubscription = () => {
-    const channel = supabase
-      .channel('today_tasks_changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'today_tasks' },
-        (payload) => {
-          if (payload.new) {
-            setQuickTasks(payload.new.quick_tasks || []);
-            setTodayTasks(payload.new.today_tasks || []);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  };
-
-  // タスクをSupabaseに保存
-  const saveTasks = async (updatedTasks) => {
+  // 簡易タスクをLocalStorageに保存
+  const saveQuickTasks = (updatedTasks) => {
     try {
-      const { data: currentData } = await supabase
-        .from('today_tasks')
-        .select('*')
-        .eq('id', 1)
-        .single();
+      const stored = localStorage.getItem(STORAGE_KEY);
+      const data = stored ? JSON.parse(stored) : {};
 
-      await supabase
-        .from('today_tasks')
-        .upsert({
-          id: 1,
-          quick_tasks: currentData?.quick_tasks || [],
-          today_tasks: updatedTasks,
-          last_reset_date: currentData?.last_reset_date || new Date().toISOString().split('T')[0],
-          updated_at: new Date().toISOString()
-        });
-    } catch (err) {
-      console.error('Error saving tasks:', err);
-    }
-  };
+      const newData = {
+        ...data,
+        quick_tasks: updatedTasks,
+        last_reset_date: data?.last_reset_date || new Date().toISOString().split('T')[0],
+        updated_at: new Date().toISOString()
+      };
 
-  // 簡易タスクをSupabaseに保存
-  const saveQuickTasks = async (updatedTasks) => {
-    try {
-      const { data: currentData } = await supabase
-        .from('today_tasks')
-        .select('*')
-        .eq('id', 1)
-        .single();
-
-      await supabase
-        .from('today_tasks')
-        .upsert({
-          id: 1,
-          quick_tasks: updatedTasks,
-          today_tasks: currentData?.today_tasks || [],
-          last_reset_date: currentData?.last_reset_date || new Date().toISOString().split('T')[0],
-          updated_at: new Date().toISOString()
-        });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+      setQuickTasks(updatedTasks);
     } catch (err) {
       console.error('Error saving quick tasks:', err);
     }
-  };
-
-  // タスクを追加
-  const handleAddTask = () => {
-    if (!newTaskTitle.trim() || !selectedTimeSlot) return;
-
-    const newTask = {
-      id: Date.now().toString(),
-      title: newTaskTitle.trim(),
-      time: selectedTimeSlot,
-      startTime: startTime || selectedTimeSlot,
-      endTime: endTime || '',
-      completed: false,
-      createdAt: new Date().toISOString()
-    };
-
-    const updatedTasks = [...todayTasks, newTask].sort((a, b) => a.time.localeCompare(b.time));
-    saveTasks(updatedTasks);
-    setNewTaskTitle('');
-    setStartTime('');
-    setEndTime('');
-    setSelectedTimeSlot(null);
-  };
-
-  // タスクを削除
-  const handleDeleteTask = (id) => {
-    const updatedTasks = todayTasks.filter(t => t.id !== id);
-    saveTasks(updatedTasks);
-  };
-
-  // タスクの完了状態を切り替え
-  const handleToggleComplete = (id) => {
-    const updatedTasks = todayTasks.map(t =>
-      t.id === id ? { ...t, completed: !t.completed } : t
-    );
-    saveTasks(updatedTasks);
   };
 
   // 簡易タスクを追加
@@ -221,42 +116,6 @@ const TodayTasks = () => {
     const updatedTasks = quickTasks.filter(t => t.id !== id);
     saveQuickTasks(updatedTasks);
   };
-
-  // 特定の時間のタスクを取得
-  const getTasksForTime = (time) => {
-    return todayTasks.filter(t => t.time === time);
-  };
-
-  // タスクが指定時間に跨っているかチェック
-  const isTaskInTimeRange = (task, time) => {
-    if (!task.endTime) return task.time === time;
-
-    const timeToMinutes = (t) => {
-      const [hours, minutes] = t.split(':').map(Number);
-      return hours * 60 + minutes;
-    };
-
-    const taskStartMinutes = timeToMinutes(task.startTime);
-    const taskEndMinutes = timeToMinutes(task.endTime);
-    const currentMinutes = timeToMinutes(time);
-
-    return currentMinutes >= taskStartMinutes && currentMinutes < taskEndMinutes;
-  };
-
-  // 特定の時間に表示されるタスクを取得（時間範囲を考慮）
-  const getTasksForTimeSlot = (time) => {
-    return todayTasks.filter(t => isTaskInTimeRange(t, time));
-  };
-
-  // タスク統計
-  const totalTasks = todayTasks.length;
-  const completedTasks = todayTasks.filter(t => t.completed).length;
-  const remainingTasks = totalTasks - completedTasks;
-  const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-  // 現在時刻
-  const currentHour = new Date().getHours();
-  const currentTime = `${String(currentHour).padStart(2, '0')}:00`;
 
   return (
     <div className="space-y-6">

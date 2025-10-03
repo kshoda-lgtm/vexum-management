@@ -30,7 +30,9 @@ const TaskCard = ({ task, onEdit }) => {
   const StatusIcon = statusInfo.icon;
 
   // 期限が過ぎているかチェック
-  const isOverdue = new Date(task.deadline) < new Date() && task.status !== 'completed';
+  const deadlineDate = task.deadline ? new Date(task.deadline) : null;
+  const isValidDeadline = deadlineDate && !isNaN(deadlineDate.getTime());
+  const isOverdue = isValidDeadline && deadlineDate < new Date() && task.status !== 'completed';
 
   return (
     <div
@@ -67,17 +69,19 @@ const TaskCard = ({ task, onEdit }) => {
       </div>
 
       {/* 期限 */}
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">期限:</span>
-        <span
-          className={`text-sm font-medium ${
-            isOverdue ? 'text-red-600' : 'text-gray-700'
-          }`}
-        >
-          {format(new Date(task.deadline), 'yyyy/MM/dd')}
-          {isOverdue && ' (期限超過)'}
-        </span>
-      </div>
+      {isValidDeadline && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-600">期限:</span>
+          <span
+            className={`text-sm font-medium ${
+              isOverdue ? 'text-red-600' : 'text-gray-700'
+            }`}
+          >
+            {format(deadlineDate, 'yyyy/MM/dd')}
+            {isOverdue && ' (期限超過)'}
+          </span>
+        </div>
+      )}
 
       {/* 概要（ある場合） */}
       {task.overview && (

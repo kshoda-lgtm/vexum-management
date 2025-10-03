@@ -1,11 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import ProgressManagementAPI from '../utils/api-client';
-import { API_CONFIG } from '../config/api';
+import { supabase } from '../supabase';
 
 const AppContext = createContext();
-
-// APIクライアントのインスタンスを作成
-const api = new ProgressManagementAPI(API_CONFIG.BASE_URL);
 
 export const useAppContext = () => {
   const context = useContext(AppContext);
@@ -20,268 +16,203 @@ export const AppProvider = ({ children }) => {
   const [tasks, setTasks] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [reports, setReports] = useState([]);
-  const [shifts, setShifts] = useState([]); // GAS APIにはないが互換性のため保持
+  const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // 初期データ読み込み
+  // 初期データ読み込み + リアルタイム同期
   useEffect(() => {
     loadData();
+    setupRealtimeSubscription();
   }, []);
 
   // データ読み込み
   const loadData = async () => {
     try {
-      setLoading(true);
+      const { data, error } = await supabase
+        .from('app_data')
+        .select('*')
+        .single();
 
-      // 並列で全データを取得
-      const [staffRes, tasksRes, meetingsRes, reportsRes] = await Promise.all([
-        api.getAllStaff(),
-        api.getAllTasks(),
-        api.getAllMeetings(),
-        api.getAllMonthlyReports()
-      ]);
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
 
-      if (staffRes.success) setStaff(staffRes.data || []);
-      if (tasksRes.success) setTasks(tasksRes.data || []);
-      if (meetingsRes.success) setMeetings(meetingsRes.data || []);
-      if (reportsRes.success) setReports(reportsRes.data || []);
-
+      if (data) {
+        setStaff(data.staff || []);
+        setTasks(data.tasks || []);
+        setMeetings(data.meetings || []);
+        setReports(data.reports || []);
+        setShifts(data.shifts || []);
+      }
+      setLoading(false);
       setError(null);
     } catch (err) {
       console.error('Data loading error:', err);
       setError('データの読み込みに失敗しました');
-    } finally {
       setLoading(false);
     }
   };
 
-  // エラーハンドリング
-  const handleError = (err, operation = 'この操作') => {
-    console.error(`${operation} Error:`, err);
-    setError(`${operation}でエラーが発生しました`);
+  // リアルタイム同期
+  const setupRealtimeSubscription = () => {
+    const channel = supabase
+      .channel('app_data_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'app_data' },
+        (payload) => {
+          if (payload.new) {
+            setStaff(payload.new.staff || []);
+            setTasks(payload.new.tasks || []);
+            setMeetings(payload.new.meetings || []);
+            setReports(payload.new.reports || []);
+            setShifts(payload.new.shifts || []);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   };
 
-  // ========================================
-  // スタッフ管理
-  // ========================================
-
-  const addStaff = async (newStaff) => {
+  // Supabaseに保存
+  const saveToSupabase = async (key, value) => {
     try {
-      const result = await api.createStaff(newStaff);
-      if (result.success) {
-        setStaff([...staff, result.data]);
-        setError(null);
-        return result.data;
-      } else {
-        throw new Error(result.message);
-      }
+      // 現在の全データを取得
+      const { data: currentData } = await supabase
+        .from('app_data')
+        .select('*')
+        .eq('id', 1)
+        .single();
+
+      // 更新するデータを準備
+      const updateData = {
+        id: 1,
+        staff: key === 'staff' ? value : (currentData?.staff || []),
+        tasks: key === 'tasks' ? value : (currentData?.tasks || []),
+        meetings: key === 'meetings' ? value : (currentData?.meetings || []),
+        reports: key === 'reports' ? value : (currentData?.reports || []),
+        shifts: key === 'shifts' ? value : (currentData?.shifts || []),
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('app_data')
+        .upsert(updateData);
+
+      if (error) throw error;
+      setError(null);
     } catch (err) {
-      handleError(err, 'スタッフの追加');
+      console.error('Save error:', err);
+      setError('データの保存に失敗しました');
       throw err;
     }
+  };
+
+  // スタッフ管理
+  const addStaff = async (newStaff) => {
+    const staffWithMeta = {
+      ...newStaff,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedStaff = [...staff, staffWithMeta];
+    await saveToSupabase('staff', updatedStaff);
+    return staffWithMeta;
   };
 
   const updateStaff = async (id, updates) => {
-    try {
-      const result = await api.updateStaff(id, updates);
-      if (result.success) {
-        // ローカル状態を更新
-        const updatedData = await api.getStaffById(id);
-        if (updatedData.success) {
-          setStaff(staff.map(s => s.id === id ? updatedData.data : s));
-        }
-        setError(null);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'スタッフの更新');
-      throw err;
-    }
+    const updatedStaff = staff.map(s =>
+      s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
+    );
+    await saveToSupabase('staff', updatedStaff);
   };
 
   const deleteStaff = async (id) => {
-    try {
-      const result = await api.deleteStaff(id);
-      if (result.success) {
-        setStaff(staff.filter(s => s.id !== id));
-        setError(null);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'スタッフの削除');
-      throw err;
-    }
+    const updatedStaff = staff.filter(s => s.id !== id);
+    await saveToSupabase('staff', updatedStaff);
   };
 
-  // ========================================
   // タスク管理
-  // ========================================
-
   const addTask = async (newTask) => {
-    try {
-      const result = await api.createTask(newTask);
-      if (result.success) {
-        setTasks([...tasks, result.data]);
-        setError(null);
-        return result.data;
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'タスクの追加');
-      throw err;
-    }
+    const taskWithMeta = {
+      ...newTask,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedTasks = [...tasks, taskWithMeta];
+    await saveToSupabase('tasks', updatedTasks);
+    return taskWithMeta;
   };
 
   const updateTask = async (id, updates) => {
-    try {
-      const result = await api.updateTask(id, updates);
-      if (result.success) {
-        // ローカル状態を更新
-        const updatedData = await api.getTaskById(id);
-        if (updatedData.success) {
-          setTasks(tasks.map(t => t.id === id ? updatedData.data : t));
-        }
-        setError(null);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'タスクの更新');
-      throw err;
-    }
+    const updatedTasks = tasks.map(t =>
+      t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+    );
+    await saveToSupabase('tasks', updatedTasks);
   };
 
   const deleteTask = async (id) => {
-    try {
-      const result = await api.deleteTask(id);
-      if (result.success) {
-        setTasks(tasks.filter(t => t.id !== id));
-        setError(null);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'タスクの削除');
-      throw err;
-    }
+    const updatedTasks = tasks.filter(t => t.id !== id);
+    await saveToSupabase('tasks', updatedTasks);
   };
 
-  // ========================================
   // ミーティング管理
-  // ========================================
-
   const addMeeting = async (newMeeting) => {
-    try {
-      const result = await api.createMeeting(newMeeting);
-      if (result.success) {
-        setMeetings([...meetings, result.data]);
-        setError(null);
-        return result.data;
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'ミーティングの追加');
-      throw err;
-    }
+    const meetingWithMeta = {
+      ...newMeeting,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedMeetings = [...meetings, meetingWithMeta];
+    await saveToSupabase('meetings', updatedMeetings);
+    return meetingWithMeta;
   };
 
   const updateMeeting = async (id, updates) => {
-    try {
-      const result = await api.updateMeeting(id, updates);
-      if (result.success) {
-        // ローカル状態を更新
-        const updatedData = await api.getMeetingById(id);
-        if (updatedData.success) {
-          setMeetings(meetings.map(m => m.id === id ? updatedData.data : m));
-        }
-        setError(null);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'ミーティングの更新');
-      throw err;
-    }
+    const updatedMeetings = meetings.map(m =>
+      m.id === id ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m
+    );
+    await saveToSupabase('meetings', updatedMeetings);
   };
 
   const deleteMeeting = async (id) => {
-    try {
-      const result = await api.deleteMeeting(id);
-      if (result.success) {
-        setMeetings(meetings.filter(m => m.id !== id));
-        setError(null);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'ミーティングの削除');
-      throw err;
-    }
+    const updatedMeetings = meetings.filter(m => m.id !== id);
+    await saveToSupabase('meetings', updatedMeetings);
   };
 
-  // ========================================
   // 月次レポート管理
-  // ========================================
-
   const addReport = async (newReport) => {
-    try {
-      const result = await api.createMonthlyReport(newReport);
-      if (result.success) {
-        setReports([...reports, result.data]);
-        setError(null);
-        return result.data;
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'レポートの追加');
-      throw err;
-    }
+    const reportWithMeta = {
+      ...newReport,
+      id: generateId(),
+      generatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedReports = [...reports, reportWithMeta];
+    await saveToSupabase('reports', updatedReports);
+    return reportWithMeta;
   };
 
   const updateReport = async (id, updates) => {
-    try {
-      const result = await api.updateMonthlyReport(id, updates);
-      if (result.success) {
-        // ローカル状態を更新
-        const updatedData = await api.getMonthlyReportById(id);
-        if (updatedData.success) {
-          setReports(reports.map(r => r.id === id ? updatedData.data : r));
-        }
-        setError(null);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'レポートの更新');
-      throw err;
-    }
+    const updatedReports = reports.map(r =>
+      r.id === id ? { ...r, ...updates, updatedAt: new Date().toISOString() } : r
+    );
+    await saveToSupabase('reports', updatedReports);
   };
 
   const deleteReport = async (id) => {
-    try {
-      const result = await api.deleteMonthlyReport(id);
-      if (result.success) {
-        setReports(reports.filter(r => r.id !== id));
-        setError(null);
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (err) {
-      handleError(err, 'レポートの削除');
-      throw err;
-    }
+    const updatedReports = reports.filter(r => r.id !== id);
+    await saveToSupabase('reports', updatedReports);
   };
 
-  // ========================================
-  // シフト管理（互換性のため残す）
-  // ========================================
-
+  // シフト管理
   const addShift = async (newShift) => {
     const shiftWithMeta = {
       ...newShift,
@@ -289,18 +220,21 @@ export const AppProvider = ({ children }) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    setShifts([...shifts, shiftWithMeta]);
+    const updatedShifts = [...shifts, shiftWithMeta];
+    await saveToSupabase('shifts', updatedShifts);
     return shiftWithMeta;
   };
 
   const updateShift = async (id, updates) => {
-    setShifts(shifts.map(s =>
+    const updatedShifts = shifts.map(s =>
       s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
-    ));
+    );
+    await saveToSupabase('shifts', updatedShifts);
   };
 
   const deleteShift = async (id) => {
-    setShifts(shifts.filter(s => s.id !== id));
+    const updatedShifts = shifts.filter(s => s.id !== id);
+    await saveToSupabase('shifts', updatedShifts);
   };
 
   const value = {
@@ -336,10 +270,7 @@ export const AppProvider = ({ children }) => {
     // Shift actions
     addShift,
     updateShift,
-    deleteShift,
-
-    // Utility
-    reloadData: loadData
+    deleteShift
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

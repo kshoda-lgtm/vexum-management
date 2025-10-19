@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Calendar, User, FileText, List, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isValid } from 'date-fns';
 
 const TaskTimeline = () => {
   const { staff, tasks } = useAppContext();
@@ -227,13 +227,16 @@ const TaskTimeline = () => {
                         // 開始日、終了日、終了1週間前のみ表示
                         if (!isTaskStart && !isTaskEnd && !isOneWeekBefore) return null;
 
+                        const startDateValid = task.startDate && isValid(new Date(task.startDate));
+                        const deadlineValid = task.deadline && isValid(new Date(task.deadline));
+
                         return (
                           <div
                             key={task.id}
                             className={`text-xs ${statusColor} text-white px-1.5 py-1 rounded truncate ${
                               task.status === 'completed' ? 'opacity-60' : ''
                             } ${isOneWeekBefore ? 'font-bold border-2 border-yellow-300 shadow-md' : ''}`}
-                            title={`${task.taskName}\n${task.startDate ? `開始: ${format(new Date(task.startDate), 'yyyy/MM/dd')}\n` : ''}期限: ${format(new Date(task.deadline), 'yyyy/MM/dd')}\n担当: ${taskStaff?.name || '未設定'}\n進捗: ${task.completionRate}%`}
+                            title={`${task.taskName}\n${startDateValid ? `開始: ${format(new Date(task.startDate), 'yyyy/MM/dd')}\n` : ''}${deadlineValid ? `期限: ${format(new Date(task.deadline), 'yyyy/MM/dd')}\n` : ''}担当: ${taskStaff?.name || '未設定'}\n進捗: ${task.completionRate}%`}
                           >
                             {isTaskStart && `▶ ${task.taskName}`}
                             {isTaskEnd && `◀ ${task.taskName}`}
@@ -319,12 +322,16 @@ const TaskTimeline = () => {
                           <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
                             <Calendar className="w-4 h-4" />
                             <span className={isOverdue ? 'text-red-600 font-semibold' : ''}>
-                              {task.startDate && (
+                              {task.startDate && isValid(new Date(task.startDate)) && (
                                 <>
                                   {format(new Date(task.startDate), 'yyyy/MM/dd')} 〜
                                 </>
                               )}
-                              {format(new Date(task.deadline), 'yyyy/MM/dd')}
+                              {task.deadline && isValid(new Date(task.deadline)) ? (
+                                format(new Date(task.deadline), 'yyyy/MM/dd')
+                              ) : (
+                                '日付未設定'
+                              )}
                               {isOverdue && ' (期限超過)'}
                             </span>
                           </div>

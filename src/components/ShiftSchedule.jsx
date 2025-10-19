@@ -6,7 +6,7 @@ import html2canvas from 'html2canvas';
 import { saveAs } from 'file-saver';
 
 const ShiftSchedule = () => {
-  const { shifts, addShift, deleteShift } = useAppContext();
+  const { shifts, addShift, addShifts, deleteShift } = useAppContext();
   const [filterClient, setFilterClient] = useState('');
   const [currentDate, setCurrentDate] = useState(new Date()); // 今日の日付
   const [selectedDates, setSelectedDates] = useState([]);
@@ -59,7 +59,7 @@ const ShiftSchedule = () => {
   };
 
   // シフト一括追加
-  const handleAddShifts = () => {
+  const handleAddShifts = async () => {
     if (!staffName.trim() || !clientName.trim()) {
       alert('スタッフ名とクライアント名を入力してください');
       return;
@@ -70,35 +70,36 @@ const ShiftSchedule = () => {
       return;
     }
 
-    // 選択された全ての日付のシフトを一度に追加
-    const addedCount = selectedDates.length;
-    const newShifts = selectedDates.map(date => ({
-      clientName: clientName.trim(),
-      staffId: staffName.trim(),
-      date: new Date(date),
-      startTime,
-      endTime,
-      notes
-    }));
+    try {
+      // 選択された全ての日付のシフトを一度に追加
+      const addedCount = selectedDates.length;
+      const newShifts = selectedDates.map(date => ({
+        clientName: clientName.trim(),
+        staffId: staffName.trim(),
+        date: new Date(date),
+        startTime,
+        endTime,
+        notes
+      }));
 
-    // 一括で追加
-    newShifts.forEach(shiftData => {
-      addShift(shiftData);
-    });
+      // 一括で追加（1回のDB操作で全て追加）
+      await addShifts(newShifts);
 
-    // リセット
-    setStaffName('');
-    setClientName('');
-    setStartTime('09:00');
-    setEndTime('18:00');
-    setNotes('');
-    setSelectedDates([]);
-    setShowForm(false);
+      // リセット
+      setStaffName('');
+      setClientName('');
+      setStartTime('09:00');
+      setEndTime('18:00');
+      setNotes('');
+      setSelectedDates([]);
+      setShowForm(false);
 
-    // 少し遅延させてからアラート表示（state更新を待つ）
-    setTimeout(() => {
+      // 成功メッセージ
       alert(`${addedCount}件のシフトを追加しました`);
-    }, 100);
+    } catch (error) {
+      console.error('シフト追加エラー:', error);
+      alert('シフトの追加に失敗しました');
+    }
   };
 
   // 特定の日のシフトを取得（クライアントフィルター適用）
@@ -151,7 +152,14 @@ const ShiftSchedule = () => {
       {/* カレンダー */}
       <div className="bg-white rounded-lg shadow p-6" ref={calendarRef}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-gray-800">シフトスケジュール</h2>
+          <div className="flex flex-col gap-2">
+            <h2 className="text-2xl font-bold text-gray-800">シフトスケジュール</h2>
+            {filterClient && (
+              <div className="px-4 py-2 bg-primary-500 text-white rounded-lg inline-block">
+                <span className="text-2xl font-bold">{filterClient}</span>
+              </div>
+            )}
+          </div>
 
           {/* クライアント選択とスクリーンショットボタン */}
           <div className="flex items-center gap-3">
@@ -243,7 +251,7 @@ const ShiftSchedule = () => {
               <div
                 key={date.toISOString()}
                 onClick={() => handleDateClick(date)}
-                className={`aspect-square border rounded-lg p-2 cursor-pointer transition-all ${
+                className={`min-h-[140px] border rounded-lg p-2 cursor-pointer transition-all ${
                   isSelected
                     ? 'bg-primary-200 border-primary-600 shadow-md ring-2 ring-primary-400'
                     : isToday(date)
@@ -251,24 +259,39 @@ const ShiftSchedule = () => {
                     : 'border-gray-200 hover:bg-gray-50'
                 } ${dayOfWeek === 0 ? 'bg-red-50' : dayOfWeek === 6 ? 'bg-blue-50' : ''}`}
               >
-                <div className={`text-sm font-semibold ${
+                <div className={`text-sm font-semibold mb-2 ${
                   dayOfWeek === 0 ? 'text-red-600' : dayOfWeek === 6 ? 'text-blue-600' : 'text-gray-700'
                 }`}>
                   {format(date, 'd')}
                 </div>
                 {dayShifts.length > 0 && (
-                  <div className="mt-1 space-y-1">
-                    {dayShifts.slice(0, 2).map(shift => (
+                  <div className="space-y-1.5">
+                    {dayShifts.length === 1 ? (
+                      // 1名の場合は名前と時間を表示
                       <div
-                        key={shift.id}
-                        className="text-xs bg-primary-500 text-white px-1 py-0.5 rounded truncate"
-                        title={`${shift.staffId} ${shift.startTime}-${shift.endTime}`}
+                        key={dayShifts[0].id}
+                        className="bg-primary-600 text-white px-2 py-2 rounded shadow-sm"
+                        title={`${dayShifts[0].staffId} ${dayShifts[0].startTime}-${dayShifts[0].endTime}${dayShifts[0].notes ? ` (${dayShifts[0].notes})` : ''}`}
                       >
-                        {shift.staffId}
+                        <div className="font-extrabold text-base text-center mb-1">{dayShifts[0].staffId}</div>
+                        <div className="text-xs text-center pt-1 border-t border-white/30">{dayShifts[0].startTime}~{dayShifts[0].endTime}</div>
                       </div>
-                    ))}
-                    {dayShifts.length > 2 && (
-                      <div className="text-xs text-gray-500">+{dayShifts.length - 2}</div>
+                    ) : (
+                      // 複数名の場合は名前のみを表示
+                      <>
+                        {dayShifts.slice(0, 4).map(shift => (
+                          <div
+                            key={shift.id}
+                            className="bg-primary-600 text-white px-2 py-1.5 rounded shadow-sm"
+                            title={`${shift.staffId} ${shift.startTime}-${shift.endTime}${shift.notes ? ` (${shift.notes})` : ''}`}
+                          >
+                            <div className="font-extrabold text-base text-center">{shift.staffId}</div>
+                          </div>
+                        ))}
+                        {dayShifts.length > 4 && (
+                          <div className="text-sm text-gray-700 text-center font-bold">+{dayShifts.length - 4}名</div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}

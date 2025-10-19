@@ -15,7 +15,10 @@ export const useAppContext = () => {
 export const AppProvider = ({ children }) => {
   const [staff, setStaff] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [meetings, setMeetings] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [weeks, setWeeks] = useState([]);
+  const [dailyEntries, setDailyEntries] = useState([]);
+  const [nextWeekPlans, setNextWeekPlans] = useState([]);
   const [reports, setReports] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +54,10 @@ export const AppProvider = ({ children }) => {
           if (newData) {
             setStaff(newData.staff || []);
             setTasks(newData.tasks || []);
-            setMeetings(newData.meetings || []);
+            setUsers(newData.users || []);
+            setWeeks(newData.weeks || []);
+            setDailyEntries(newData.daily_entries || []);
+            setNextWeekPlans(newData.next_week_plans || []);
             setReports(newData.reports || []);
             setShifts(newData.shifts || []);
           }
@@ -61,7 +67,10 @@ export const AppProvider = ({ children }) => {
       } else if (data) {
         setStaff(data.staff || []);
         setTasks(data.tasks || []);
-        setMeetings(data.meetings || []);
+        setUsers(data.users || []);
+        setWeeks(data.weeks || []);
+        setDailyEntries(data.daily_entries || []);
+        setNextWeekPlans(data.next_week_plans || []);
         setReports(data.reports || []);
         setShifts(data.shifts || []);
       }
@@ -84,7 +93,10 @@ export const AppProvider = ({ children }) => {
           if (payload.new) {
             setStaff(payload.new.staff || []);
             setTasks(payload.new.tasks || []);
-            setMeetings(payload.new.meetings || []);
+            setUsers(payload.new.users || []);
+            setWeeks(payload.new.weeks || []);
+            setDailyEntries(payload.new.daily_entries || []);
+            setNextWeekPlans(payload.new.next_week_plans || []);
             setReports(payload.new.reports || []);
             setShifts(payload.new.shifts || []);
           }
@@ -112,7 +124,10 @@ export const AppProvider = ({ children }) => {
         id: 1,
         staff: key === 'staff' ? value : (currentData?.staff || []),
         tasks: key === 'tasks' ? value : (currentData?.tasks || []),
-        meetings: key === 'meetings' ? value : (currentData?.meetings || []),
+        users: key === 'users' ? value : (currentData?.users || []),
+        weeks: key === 'weeks' ? value : (currentData?.weeks || []),
+        daily_entries: key === 'daily_entries' ? value : (currentData?.daily_entries || []),
+        next_week_plans: key === 'next_week_plans' ? value : (currentData?.next_week_plans || []),
         reports: key === 'reports' ? value : (currentData?.reports || []),
         shifts: key === 'shifts' ? value : (currentData?.shifts || []),
         updated_at: new Date().toISOString()
@@ -181,29 +196,105 @@ export const AppProvider = ({ children }) => {
     await saveToSupabase('tasks', updatedTasks);
   };
 
-  // ミーティング管理
-  const addMeeting = async (newMeeting) => {
-    const meetingWithMeta = {
-      ...newMeeting,
+  // ユーザー管理
+  const addUser = async (newUser) => {
+    const userWithMeta = {
+      ...newUser,
       id: generateId(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    const updatedMeetings = [...meetings, meetingWithMeta];
-    await saveToSupabase('meetings', updatedMeetings);
-    return meetingWithMeta;
+    const updatedUsers = [...users, userWithMeta];
+    await saveToSupabase('users', updatedUsers);
+    return userWithMeta;
   };
 
-  const updateMeeting = async (id, updates) => {
-    const updatedMeetings = meetings.map(m =>
-      m.id === id ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m
+  const updateUser = async (id, updates) => {
+    const updatedUsers = users.map(u =>
+      u.id === id ? { ...u, ...updates, updatedAt: new Date().toISOString() } : u
     );
-    await saveToSupabase('meetings', updatedMeetings);
+    await saveToSupabase('users', updatedUsers);
   };
 
-  const deleteMeeting = async (id) => {
-    const updatedMeetings = meetings.filter(m => m.id !== id);
-    await saveToSupabase('meetings', updatedMeetings);
+  const deleteUser = async (id) => {
+    const updatedUsers = users.filter(u => u.id !== id);
+    await saveToSupabase('users', updatedUsers);
+  };
+
+  // 週管理
+  const addWeek = async (newWeek) => {
+    const weekWithMeta = {
+      ...newWeek,
+      id: generateId(),
+      status: newWeek.status || 'draft',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedWeeks = [...weeks, weekWithMeta];
+    await saveToSupabase('weeks', updatedWeeks);
+    return weekWithMeta;
+  };
+
+  const updateWeek = async (id, updates) => {
+    const updatedWeeks = weeks.map(w =>
+      w.id === id ? { ...w, ...updates, updatedAt: new Date().toISOString() } : w
+    );
+    await saveToSupabase('weeks', updatedWeeks);
+  };
+
+  const deleteWeek = async (id) => {
+    const updatedWeeks = weeks.filter(w => w.id !== id);
+    await saveToSupabase('weeks', updatedWeeks);
+  };
+
+  // 日報エントリー管理
+  const addDailyEntry = async (newEntry) => {
+    const entryWithMeta = {
+      ...newEntry,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedEntries = [...dailyEntries, entryWithMeta];
+    await saveToSupabase('daily_entries', updatedEntries);
+    return entryWithMeta;
+  };
+
+  const updateDailyEntry = async (id, updates) => {
+    const updatedEntries = dailyEntries.map(e =>
+      e.id === id ? { ...e, ...updates, updatedAt: new Date().toISOString() } : e
+    );
+    await saveToSupabase('daily_entries', updatedEntries);
+  };
+
+  const deleteDailyEntry = async (id) => {
+    const updatedEntries = dailyEntries.filter(e => e.id !== id);
+    await saveToSupabase('daily_entries', updatedEntries);
+  };
+
+  // 来週計画管理
+  const addNextWeekPlan = async (newPlan) => {
+    const planWithMeta = {
+      ...newPlan,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedPlans = [...nextWeekPlans, planWithMeta];
+    await saveToSupabase('next_week_plans', updatedPlans);
+    return planWithMeta;
+  };
+
+  const updateNextWeekPlan = async (id, updates) => {
+    const updatedPlans = nextWeekPlans.map(p =>
+      p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
+    );
+    await saveToSupabase('next_week_plans', updatedPlans);
+  };
+
+  const deleteNextWeekPlan = async (id) => {
+    const updatedPlans = nextWeekPlans.filter(p => p.id !== id);
+    await saveToSupabase('next_week_plans', updatedPlans);
   };
 
   // 月次レポート管理
@@ -245,6 +336,19 @@ export const AppProvider = ({ children }) => {
     return shiftWithMeta;
   };
 
+  // シフト一括追加（複数のシフトを一度に追加）
+  const addShifts = async (newShifts) => {
+    const shiftsWithMeta = newShifts.map(shift => ({
+      ...shift,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }));
+    const updatedShifts = [...shifts, ...shiftsWithMeta];
+    await saveToSupabase('shifts', updatedShifts);
+    return shiftsWithMeta;
+  };
+
   const updateShift = async (id, updates) => {
     const updatedShifts = shifts.map(s =>
       s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
@@ -261,7 +365,10 @@ export const AppProvider = ({ children }) => {
     // State
     staff,
     tasks,
-    meetings,
+    users,
+    weeks,
+    dailyEntries,
+    nextWeekPlans,
     reports,
     shifts,
     loading,
@@ -277,10 +384,25 @@ export const AppProvider = ({ children }) => {
     updateTask,
     deleteTask,
 
-    // Meeting actions
-    addMeeting,
-    updateMeeting,
-    deleteMeeting,
+    // User actions
+    addUser,
+    updateUser,
+    deleteUser,
+
+    // Week actions
+    addWeek,
+    updateWeek,
+    deleteWeek,
+
+    // Daily Entry actions
+    addDailyEntry,
+    updateDailyEntry,
+    deleteDailyEntry,
+
+    // Next Week Plan actions
+    addNextWeekPlan,
+    updateNextWeekPlan,
+    deleteNextWeekPlan,
 
     // Report actions
     addReport,
@@ -289,6 +411,7 @@ export const AppProvider = ({ children }) => {
 
     // Shift actions
     addShift,
+    addShifts,
     updateShift,
     deleteShift
   };

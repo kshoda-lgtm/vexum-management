@@ -14,8 +14,8 @@ const ScheduleList = () => {
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
-  // クライアント一覧を取得
-  const clients = [...new Set(tasks.map(t => t.clientName))];
+  // クライアント一覧を取得（空文字を除外）
+  const clients = [...new Set(tasks.map(t => t.clientName))].filter(Boolean);
 
   // フィルタリングされたタスク
   const filteredTasks = tasks.filter(task => {

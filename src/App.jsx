@@ -2,18 +2,17 @@ import { useState } from 'react';
 import { AppProvider } from './contexts/AppContext';
 import StaffList from './components/StaffList';
 import ScheduleList from './components/ScheduleList';
-import MeetingList from './components/MeetingList';
-import ReportGenerator from './components/ReportGenerator';
+import DailyReportCalendar from './components/DailyReportCalendar';
+import WeeklyDashboard from './components/WeeklyDashboard';
 import BackupManager from './components/BackupManager';
 import ShiftSchedule from './components/ShiftSchedule';
 import TaskTimeline from './components/TaskTimeline';
-import TodayTasks from './components/TodayTasks';
 import Memo from './components/Memo';
 import Header from './components/Header';
 import ErrorNotification from './components/ErrorNotification';
 
 function App() {
-  const [currentView, setCurrentView] = useState('today-tasks');
+  const [currentView, setCurrentView] = useState('daily-report');
 
   return (
     <AppProvider>
@@ -23,11 +22,10 @@ function App() {
         <main className="container mx-auto px-4 py-6">
           {currentView === 'staff' && <StaffList />}
           {currentView === 'schedule' && <ScheduleList />}
-          {currentView === 'meetings' && <MeetingList />}
-          {currentView === 'report' && <ReportGenerator />}
+          {currentView === 'daily-report' && <DailyReportCalendar />}
+          {currentView === 'weekly-dashboard' && <WeeklyDashboard />}
           {currentView === 'shift-schedule' && <ShiftSchedule />}
           {currentView === 'task-timeline' && <TaskTimeline />}
-          {currentView === 'today-tasks' && <TodayTasks />}
           {currentView === 'memo' && <Memo />}
           {currentView === 'backup' && <BackupManager />}
         </main>

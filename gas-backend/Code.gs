@@ -11,7 +11,8 @@ const SHEET_NAMES = {
   STAFF: 'Staff',
   TASKS: 'Tasks',
   MEETINGS: 'Meetings',
-  MONTHLY_REPORTS: 'MonthlyReports'
+  MONTHLY_REPORTS: 'MonthlyReports',
+  DAILY_TASKS: 'DailyTasks'
 };
 
 /**
@@ -163,6 +164,29 @@ function initializeMonthlyReportSheet() {
 }
 
 /**
+ * 本日のタスクシートのヘッダーを初期化
+ */
+function initializeDailyTaskSheet() {
+  const sheet = getOrCreateSheet(SHEET_NAMES.DAILY_TASKS);
+
+  if (sheet.getLastRow() === 0) {
+    const headers = [
+      'id',
+      'title',
+      'date',
+      'completed',
+      'createdAt',
+      'updatedAt'
+    ];
+
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  }
+
+  return sheet;
+}
+
+/**
  * すべてのシートを初期化
  */
 function initializeAllSheets() {
@@ -170,10 +194,64 @@ function initializeAllSheets() {
   initializeTaskSheet();
   initializeMeetingSheet();
   initializeMonthlyReportSheet();
+  initializeDailyTaskSheet();
 
   return {
     success: true,
     message: 'All sheets initialized successfully'
+  };
+}
+
+/**
+ * DailyTasksシートの日付を文字列形式に修正
+ */
+function fixDailyTaskDates() {
+  const sheet = getOrCreateSheet(SHEET_NAMES.DAILY_TASKS);
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return {
+      success: true,
+      message: 'No tasks to fix'
+    };
+  }
+
+  // 全データを取得
+  const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+
+  // 各行の日付を修正
+  for (let i = 0; i < data.length; i++) {
+    const rowNum = i + 2;
+    const dateValue = data[i][2]; // date列
+
+    if (dateValue) {
+      let fixedDate;
+
+      // 日付型の場合、YYYY-MM-DD形式に変換
+      if (dateValue instanceof Date) {
+        const year = dateValue.getFullYear();
+        const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+        const day = String(dateValue.getDate()).padStart(2, '0');
+        fixedDate = `${year}-${month}-${day}`;
+      }
+      // ISO形式の文字列の場合、YYYY-MM-DDに変換
+      else if (typeof dateValue === 'string' && dateValue.includes('T')) {
+        fixedDate = dateValue.split('T')[0];
+      }
+      // すでに正しい形式の場合
+      else {
+        fixedDate = dateValue.toString().replace(/^'/, ''); // 先頭のシングルクォートを削除
+      }
+
+      // 文字列として保存（先頭にシングルクォート）
+      sheet.getRange(rowNum, 3).setValue("'" + fixedDate);
+    }
+  }
+
+  return {
+    success: true,
+    message: `Fixed ${data.length} tasks`,
+    count: data.length
   };
 }
 
@@ -931,6 +1009,173 @@ function deleteMonthlyReport(reportId) {
 }
 
 // ========================================
+// CRUD操作: DailyTask (本日のタスク)
+// ========================================
+
+/**
+ * 本日のタスクを作成
+ */
+function createDailyTask(taskData) {
+  const sheet = initializeDailyTaskSheet();
+  const id = generateId();
+  const timestamp = getCurrentTimestamp();
+
+  // 日付を文字列として保存（YYYY-MM-DD形式）
+  const taskDate = taskData.date || new Date().toISOString().split('T')[0];
+
+  const rowData = [
+    id,
+    taskData.title || '',
+    "'" + taskDate, // シングルクォートを先頭に追加して文字列として保存
+    taskData.completed || false,
+    timestamp,
+    timestamp
+  ];
+
+  sheet.appendRow(rowData);
+
+  return {
+    success: true,
+    data: {
+      id: id,
+      title: taskData.title || '',
+      date: taskDate,
+      completed: taskData.completed || false,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  };
+}
+
+/**
+ * すべての本日のタスクを取得
+ */
+function getAllDailyTasks() {
+  const sheet = initializeDailyTaskSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return { success: true, data: [] };
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  const headers = sheet.getRange(1, 1, 1, 6).getValues()[0];
+
+  const taskList = data.map(row => {
+    const task = {};
+    headers.forEach((header, index) => {
+      task[header] = row[index];
+    });
+    return task;
+  });
+
+  return {
+    success: true,
+    data: taskList
+  };
+}
+
+/**
+ * IDで本日のタスクを取得
+ */
+function getDailyTaskById(taskId) {
+  const sheet = initializeDailyTaskSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return { success: false, message: 'Task not found' };
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  const headers = sheet.getRange(1, 1, 1, 6).getValues()[0];
+
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === taskId) {
+      const task = {};
+      headers.forEach((header, index) => {
+        task[header] = data[i][index];
+      });
+      return { success: true, data: task };
+    }
+  }
+
+  return { success: false, message: 'Task not found' };
+}
+
+/**
+ * 本日のタスクを更新
+ */
+function updateDailyTask(taskId, taskData) {
+  const sheet = initializeDailyTaskSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return { success: false, message: 'Task not found' };
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === taskId) {
+      const rowNum = i + 2;
+      const timestamp = getCurrentTimestamp();
+
+      const currentRow = sheet.getRange(rowNum, 1, 1, 6).getValues()[0];
+
+      // 日付を文字列として保存
+      let dateValue = currentRow[2];
+      if (taskData.date !== undefined) {
+        dateValue = "'" + taskData.date;
+      }
+
+      const updatedRow = [
+        taskId,
+        taskData.title !== undefined ? taskData.title : currentRow[1],
+        dateValue,
+        taskData.completed !== undefined ? taskData.completed : currentRow[3],
+        currentRow[4], // createdAt
+        timestamp // updatedAt
+      ];
+
+      sheet.getRange(rowNum, 1, 1, 6).setValues([updatedRow]);
+
+      return {
+        success: true,
+        message: 'Task updated successfully'
+      };
+    }
+  }
+
+  return { success: false, message: 'Task not found' };
+}
+
+/**
+ * 本日のタスクを削除
+ */
+function deleteDailyTask(taskId) {
+  const sheet = initializeDailyTaskSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return { success: false, message: 'Task not found' };
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === taskId) {
+      sheet.deleteRow(i + 2);
+      return {
+        success: true,
+        message: 'Task deleted successfully'
+      };
+    }
+  }
+
+  return { success: false, message: 'Task not found' };
+}
+
+// ========================================
 // Web App エンドポイント
 // ========================================
 
@@ -977,9 +1222,22 @@ function doGet(e) {
         result = getMonthlyReportById(id);
         break;
 
+      // DailyTask
+      case 'getAllDailyTasks':
+        result = getAllDailyTasks();
+        break;
+      case 'getDailyTaskById':
+        result = getDailyTaskById(id);
+        break;
+
       // Initialize
       case 'initializeAllSheets':
         result = initializeAllSheets();
+        break;
+
+      // Fix dates
+      case 'fixDailyTaskDates':
+        result = fixDailyTaskDates();
         break;
 
       default:
@@ -1061,6 +1319,17 @@ function doPost(e) {
         break;
       case 'deleteMonthlyReport':
         result = deleteMonthlyReport(requestData.id);
+        break;
+
+      // DailyTask
+      case 'createDailyTask':
+        result = createDailyTask(requestData);
+        break;
+      case 'updateDailyTask':
+        result = updateDailyTask(requestData.id, requestData);
+        break;
+      case 'deleteDailyTask':
+        result = deleteDailyTask(requestData.id);
         break;
 
       default:

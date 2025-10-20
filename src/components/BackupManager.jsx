@@ -5,7 +5,7 @@ import { exportData, importData, updateLastBackupTime, getLastBackupTime } from 
 import { format } from 'date-fns';
 
 const BackupManager = () => {
-  const { staff, tasks, meetings, reports } = useAppContext();
+  const { staff, tasks } = useAppContext();
   const fileInputRef = useRef(null);
   const [lastBackup, setLastBackup] = useState(getLastBackupTime());
 
@@ -168,20 +168,7 @@ const BackupManager = () => {
           </div>
 
           <div className="p-4 bg-purple-50 rounded-lg">
-            <p className="text-sm text-purple-600 font-medium">ミーティング</p>
-            <p className="text-2xl font-bold text-purple-800">{meetings.length}</p>
-            <p className="text-xs text-purple-600">件</p>
-          </div>
-
-          <div className="p-4 bg-orange-50 rounded-lg">
-            <p className="text-sm text-orange-600 font-medium">レポート</p>
-            <p className="text-2xl font-bold text-orange-800">{reports.length}</p>
-            <p className="text-xs text-orange-600">件</p>
-          </div>
         </div>
-
-        {/* タスクステータス */}
-        <div className="mb-6">
           <h4 className="text-sm font-medium text-gray-700 mb-3">タスクステータス</h4>
           <div className="space-y-2">
             <div className="flex items-center justify-between">

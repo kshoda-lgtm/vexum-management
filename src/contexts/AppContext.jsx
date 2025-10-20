@@ -19,7 +19,6 @@ export const AppProvider = ({ children }) => {
   const [weeks, setWeeks] = useState([]);
   const [dailyEntries, setDailyEntries] = useState([]);
   const [nextWeekPlans, setNextWeekPlans] = useState([]);
-  const [reports, setReports] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -58,7 +57,6 @@ export const AppProvider = ({ children }) => {
             setWeeks(newData.weeks || []);
             setDailyEntries(newData.daily_entries || []);
             setNextWeekPlans(newData.next_week_plans || []);
-            setReports(newData.reports || []);
             setShifts(newData.shifts || []);
           }
         }
@@ -71,7 +69,6 @@ export const AppProvider = ({ children }) => {
         setWeeks(data.weeks || []);
         setDailyEntries(data.daily_entries || []);
         setNextWeekPlans(data.next_week_plans || []);
-        setReports(data.reports || []);
         setShifts(data.shifts || []);
       }
       setLoading(false);
@@ -97,7 +94,6 @@ export const AppProvider = ({ children }) => {
             setWeeks(payload.new.weeks || []);
             setDailyEntries(payload.new.daily_entries || []);
             setNextWeekPlans(payload.new.next_week_plans || []);
-            setReports(payload.new.reports || []);
             setShifts(payload.new.shifts || []);
           }
         }
@@ -128,7 +124,7 @@ export const AppProvider = ({ children }) => {
         weeks: key === 'weeks' ? value : (currentData?.weeks || []),
         daily_entries: key === 'daily_entries' ? value : (currentData?.daily_entries || []),
         next_week_plans: key === 'next_week_plans' ? value : (currentData?.next_week_plans || []),
-        reports: key === 'reports' ? value : (currentData?.reports || []),
+
         shifts: key === 'shifts' ? value : (currentData?.shifts || []),
         updated_at: new Date().toISOString()
       };
@@ -297,32 +293,6 @@ export const AppProvider = ({ children }) => {
     await saveToSupabase('next_week_plans', updatedPlans);
   };
 
-  // 月次レポート管理
-  const addReport = async (newReport) => {
-    const reportWithMeta = {
-      ...newReport,
-      id: generateId(),
-      generatedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    const updatedReports = [...reports, reportWithMeta];
-    await saveToSupabase('reports', updatedReports);
-    return reportWithMeta;
-  };
-
-  const updateReport = async (id, updates) => {
-    const updatedReports = reports.map(r =>
-      r.id === id ? { ...r, ...updates, updatedAt: new Date().toISOString() } : r
-    );
-    await saveToSupabase('reports', updatedReports);
-  };
-
-  const deleteReport = async (id) => {
-    const updatedReports = reports.filter(r => r.id !== id);
-    await saveToSupabase('reports', updatedReports);
-  };
-
   // シフト管理
   const addShift = async (newShift) => {
     const shiftWithMeta = {
@@ -369,7 +339,7 @@ export const AppProvider = ({ children }) => {
     weeks,
     dailyEntries,
     nextWeekPlans,
-    reports,
+
     shifts,
     loading,
     error,
@@ -404,10 +374,6 @@ export const AppProvider = ({ children }) => {
     updateNextWeekPlan,
     deleteNextWeekPlan,
 
-    // Report actions
-    addReport,
-    updateReport,
-    deleteReport,
 
     // Shift actions
     addShift,
